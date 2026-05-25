@@ -7,11 +7,11 @@ const mongoose = require('mongoose');
 function calculateOutputDbm(inputDbm, couplerType) {
   const losses = {
     '1x4': 7,
-    '1x8': 10,
-    '50x50': 3,
-    '1x4+1x8': 17,
-    '50x50+50x50': 6,
-    'joint_only': 0.5
+    '1x8': 12,
+    '50x50': 3.5,
+    '1x4+1x8': 19,
+    '50x50+50x50': 7,
+    'joint_only': 0.02
   };
   return inputDbm - (losses[couplerType] || 0);
 }

@@ -37,38 +37,43 @@ router.get('/', async (req, res) => {
       if (entry._id) totalByCross[entry._id] = entry.count;
     }
 
-    // Signal health buckets based on outputDbm
-    const [greenCount, yellowCount, redCount] = await Promise.all([
-      JointBox.countDocuments({ outputDbm: { $gt: 5 } }),
-      JointBox.countDocuments({ outputDbm: { $gte: 0, $lte: 5 } }),
-      JointBox.countDocuments({ outputDbm: { $lt: 0 } })
-    ]);
-    const signalHealth = {
-      green: greenCount,
-      yellow: yellowCount,
-      red: redCount
+    // Signal health: Good vs Critical per coupler type thresholds
+    const GOOD_THRESHOLD = {
+      '1x4': 11, '1x8': -1, '50x50': -3,
+      '1x4+1x8': -1, '50x50+50x50': -3, 'joint_only': -1
     };
+    const allBoxes = await JointBox.find(
+      {},
+      { customerId: 1, customerName: 1, outputDbm: 1, couplerType: 1, area: 1, cross: 1 }
+    ).lean();
+    let goodCount = 0, criticalCount = 0;
+    const lowSignalBoxes = [];
+    for (const box of allBoxes) {
+      const threshold = GOOD_THRESHOLD[box.couplerType] ?? -1;
+      if ((box.outputDbm ?? 0) >= threshold) {
+        goodCount++;
+      } else {
+        criticalCount++;
+        lowSignalBoxes.push(box);
+      }
+    }
+    const signalHealth = { green: goodCount, red: criticalCount };
+    lowSignalBoxes.sort((a, b) => (a.outputDbm ?? 0) - (b.outputDbm ?? 0));
 
     // Count of distinct EDFA ports in use
-    const edgaPortsUsedAgg = await JointBox.aggregate([
+    const edfaPortsUsedAgg = await JointBox.aggregate([
       { $match: { edgaPortNo: { $exists: true, $ne: '' } } },
       { $group: { _id: '$edgaPortNo' } },
       { $count: 'count' }
     ]);
-    const edgaPortsUsed = edgaPortsUsedAgg.length > 0 ? edgaPortsUsedAgg[0].count : 0;
-
-    // Low signal boxes (outputDbm < 0)
-    const lowSignalBoxes = await JointBox.find(
-      { outputDbm: { $lt: 0 } },
-      { customerId: 1, customerName: 1, outputDbm: 1, area: 1, cross: 1, _id: 0 }
-    ).sort({ outputDbm: 1 }).lean();
+    const edfaPortsUsed = edfaPortsUsedAgg.length > 0 ? edfaPortsUsedAgg[0].count : 0;
 
     res.json({
-      totalBoxes,
-      totalByArea,
-      totalByCross,
-      signalHealth,
-      edgaPortsUsed,
+      total: totalBoxes,
+      byArea: totalByArea,
+      byCross: totalByCross,
+      bySignal: signalHealth,
+      edfaPortsUsed,
       lowSignalBoxes
     });
   } catch (err) {

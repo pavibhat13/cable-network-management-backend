@@ -36,17 +36,11 @@ router.get('/ports', async (req, res) => {
     for (const box of boxes) {
       const portNo = box.edgaPortNo;
       if (!portMap[portNo]) {
-        portMap[portNo] = {
-          areas: new Set(),
-          crosses: new Set(),
-          boxCount: 0,
-          customerIds: []
-        };
+        portMap[portNo] = { areas: new Set(), crosses: new Set(), boxes: [] };
       }
       portMap[portNo].areas.add(box.area);
       portMap[portNo].crosses.add(box.cross);
-      portMap[portNo].boxCount += 1;
-      portMap[portNo].customerIds.push(box.customerId);
+      portMap[portNo].boxes.push({ customerId: box.customerId, customerName: box.customerName });
     }
 
     // Build the 16-slot port array
@@ -62,8 +56,7 @@ router.get('/ports', async (req, res) => {
           inUse: true,
           area: Array.from(portData.areas).join(', '),
           cross: Array.from(portData.crosses).join(', '),
-          boxCount: portData.boxCount,
-          customerIds: portData.customerIds,
+          boxes: portData.boxes,
           knownMapping
         });
       } else {
@@ -72,8 +65,7 @@ router.get('/ports', async (req, res) => {
           inUse: false,
           area: null,
           cross: null,
-          boxCount: 0,
-          customerIds: [],
+          boxes: [],
           knownMapping
         });
       }
