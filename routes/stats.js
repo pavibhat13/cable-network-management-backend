@@ -37,11 +37,14 @@ router.get('/', async (req, res) => {
       if (entry._id) totalByCross[entry._id] = entry.count;
     }
 
-    // Signal health: Good vs Critical per coupler type thresholds
-    const GOOD_THRESHOLD = {
-      '1x4': 11, '1x8': -1, '50x50': -3,
-      '1x4+1x8': -1, '50x50+50x50': -3, 'joint_only': -1
-    };
+    // Signal health: Good vs Critical using per-base-type thresholds, supports combinations
+    const BASE_THRESHOLDS = { '1x4': 11, '1x8': -1, '50x50': -3, 'joint_only': -1 };
+    function getThreshold(couplerType) {
+      if (!couplerType) return -1;
+      const parts = couplerType.split('+');
+      return Math.min(...parts.map((p) => BASE_THRESHOLDS[p] ?? -1));
+    }
+
     const allBoxes = await JointBox.find(
       {},
       { customerId: 1, customerName: 1, outputDbm: 1, couplerType: 1, area: 1, cross: 1 }
@@ -49,7 +52,7 @@ router.get('/', async (req, res) => {
     let goodCount = 0, criticalCount = 0;
     const lowSignalBoxes = [];
     for (const box of allBoxes) {
-      const threshold = GOOD_THRESHOLD[box.couplerType] ?? -1;
+      const threshold = getThreshold(box.couplerType);
       if ((box.outputDbm ?? 0) >= threshold) {
         goodCount++;
       } else {

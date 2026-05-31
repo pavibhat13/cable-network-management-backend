@@ -1,34 +1,17 @@
 const mongoose = require('mongoose');
 
-/**
- * Calculate output dBm based on input dBm and coupler type.
- * Each coupler type introduces a known insertion loss.
- */
+const BASE_LOSSES = { '1x4': 7, '1x8': 12, '50x50': 3.5, 'joint_only': 0.02 };
+const BASE_PORTS  = { '1x4': 4, '1x8': 8,  '50x50': 2,   'joint_only': 1 };
+
 function calculateOutputDbm(inputDbm, couplerType) {
-  const losses = {
-    '1x4': 7,
-    '1x8': 12,
-    '50x50': 3.5,
-    '1x4+1x8': 19,
-    '50x50+50x50': 7,
-    'joint_only': 0.02
-  };
-  return inputDbm - (losses[couplerType] || 0);
+  if (!couplerType) return inputDbm;
+  const loss = couplerType.split('+').reduce((s, p) => s + (BASE_LOSSES[p] || 0), 0);
+  return inputDbm - loss;
 }
 
-/**
- * Get total output ports for a given coupler type.
- */
 function getTotalPorts(couplerType) {
-  const ports = {
-    '1x4': 4,
-    '1x8': 8,
-    '50x50': 2,
-    '1x4+1x8': 32,
-    '50x50+50x50': 3,
-    'joint_only': 1
-  };
-  return ports[couplerType] || 1;
+  if (!couplerType) return 1;
+  return couplerType.split('+').reduce((prod, p) => prod * (BASE_PORTS[p] || 1), 1);
 }
 
 const jointBoxSchema = new mongoose.Schema(
@@ -43,21 +26,24 @@ const jointBoxSchema = new mongoose.Schema(
     },
     cross: { type: String, required: true },
     edgaPortNo: { type: String },
-    fiberType: {
-      type: String,
-      enum: ['12F', '6F', '']
-    },
-    coreNo: { type: Number },
-    couplerType: {
-      type: String,
-      required: true,
-      enum: ['1x4', '1x8', '50x50', '1x4+1x8', '50x50+50x50', 'joint_only']
-    },
+    fiberType: [{ type: String }],
+    coreNo: { type: mongoose.Schema.Types.Mixed, default: [] },
+    outputFiberType: [{ type: String }],
+    outputCoreNo: { type: mongoose.Schema.Types.Mixed, default: [] },
+    couplerStages: [{
+      couplerType: { type: String },
+      coreUsed: [{ type: Number }],
+      coreThroughed: [{ type: Number }],
+      forwardsTo: [{ type: String }]
+    }],
+    couplerType: { type: String, required: true },
     inputDbm: { type: Number, required: true },
     outputDbm: { type: Number },           // auto-calculated, stored
     totalPorts: { type: Number },          // auto-calculated
+    coreUsed: [{ type: Number }],
+    coreThroughed: [{ type: Number }],
     portsUsed: { type: Number, default: 0 },
-    extraPorts: { type: Number },          // auto-calculated
+    extraPorts: { type: Number },
     forwardsTo: [{ type: String }],        // array of customerIds
     notes: { type: String, default: '' },
     photos: [{ type: String }],
@@ -75,11 +61,19 @@ const jointBoxSchema = new mongoose.Schema(
 // Pre-save hook: auto-calculate outputDbm, totalPorts, extraPorts
 // If outputDbm was explicitly set in the payload, respect it (manual override).
 jointBoxSchema.pre('save', function (next) {
+  if (this.couplerStages?.length > 0) {
+    const first = this.couplerStages[0];
+    if (first.couplerType) this.couplerType = first.couplerType;
+    this.coreUsed = first.coreUsed || [];
+    this.coreThroughed = first.coreThroughed || [];
+    this.forwardsTo = [...new Set(this.couplerStages.flatMap(s => s.forwardsTo || []))];
+  }
   this.totalPorts = getTotalPorts(this.couplerType);
   if (this.outputDbm == null) {
     this.outputDbm = calculateOutputDbm(this.inputDbm, this.couplerType);
   }
-  this.extraPorts = Math.max(0, this.totalPorts - (this.portsUsed || 0));
+  this.portsUsed = (this.coreUsed || []).length;
+  this.extraPorts = Math.max(0, this.totalPorts - this.portsUsed);
   next();
 });
 
@@ -89,15 +83,17 @@ jointBoxSchema.pre('findOneAndUpdate', function (next) {
   const update = this.getUpdate();
   const inputDbm = update.inputDbm !== undefined ? update.inputDbm : null;
   const couplerType = update.couplerType !== undefined ? update.couplerType : null;
-  const portsUsed = update.portsUsed !== undefined ? update.portsUsed : null;
 
   if (inputDbm !== null && couplerType !== null) {
     if (update.outputDbm === undefined) {
       update.outputDbm = calculateOutputDbm(inputDbm, couplerType);
     }
     update.totalPorts = getTotalPorts(couplerType);
-    if (portsUsed !== null) {
-      update.extraPorts = Math.max(0, update.totalPorts - portsUsed);
+  }
+  if (update.coreUsed !== undefined) {
+    update.portsUsed = (update.coreUsed || []).length;
+    if (update.totalPorts != null) {
+      update.extraPorts = Math.max(0, update.totalPorts - update.portsUsed);
     }
   }
   next();
