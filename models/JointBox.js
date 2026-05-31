@@ -28,6 +28,7 @@ const jointBoxSchema = new mongoose.Schema(
     edgaPortNo: { type: String },
     fiberType: [{ type: String }],
     coreNo: { type: mongoose.Schema.Types.Mixed, default: [] },
+    fiberCoreThroughed: { type: mongoose.Schema.Types.Mixed, default: [] },
     outputFiberType: [{ type: String }],
     outputCoreNo: { type: mongoose.Schema.Types.Mixed, default: [] },
     couplerStages: [{
