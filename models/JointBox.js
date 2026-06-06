@@ -16,15 +16,11 @@ function getTotalPorts(couplerType) {
 
 const jointBoxSchema = new mongoose.Schema(
   {
-    customerId: { type: String, required: true, unique: true },
+    customerId: { type: String, unique: true, sparse: true },
     customerName: { type: String },
     doorNo: { type: String },
-    area: {
-      type: String,
-      required: true,
-      enum: ['Medarakeri', 'Bandikeri']
-    },
-    cross: { type: String, required: true },
+    area: { type: String },
+    cross: { type: String },
     edgaPortNo: { type: String },
     fiberType: [{ type: String }],
     coreNo: { type: mongoose.Schema.Types.Mixed, default: [] },
@@ -38,8 +34,8 @@ const jointBoxSchema = new mongoose.Schema(
       coreThroughed: [{ type: Number }],
       forwardsTo: [{ type: String }]
     }],
-    couplerType: { type: String, required: true },
-    inputDbm: { type: Number, required: true },
+    couplerType: { type: String },
+    inputDbm: { type: Number },
     outputDbm: { type: Number },           // auto-calculated, stored
     totalPorts: { type: Number },          // auto-calculated
     coreUsed: [{ type: Number }],
@@ -71,7 +67,7 @@ jointBoxSchema.pre('save', function (next) {
     this.forwardsTo = [...new Set(this.couplerStages.flatMap(s => s.forwardsTo || []))];
   }
   this.totalPorts = getTotalPorts(this.couplerType);
-  if (this.outputDbm == null) {
+  if (this.outputDbm == null && this.inputDbm != null) {
     this.outputDbm = calculateOutputDbm(this.inputDbm, this.couplerType);
   }
   this.portsUsed = (this.coreUsed || []).length;
