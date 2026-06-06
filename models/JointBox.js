@@ -33,6 +33,7 @@ const jointBoxSchema = new mongoose.Schema(
     outputCoreNo: { type: mongoose.Schema.Types.Mixed, default: [] },
     couplerStages: [{
       couplerType: { type: String },
+      fiberType: { type: String },
       coreUsed: [{ type: Number }],
       coreThroughed: [{ type: Number }],
       forwardsTo: [{ type: String }]
